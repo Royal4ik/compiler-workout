@@ -90,6 +90,25 @@ open SM
    Take an environment, a stack machine program, and returns a pair --- the updated environment and the list
    of x86 instructions
 *)
+
+
+ 
+let charToInt ch = match ch with
+  | ch when ch <= 'Z' -> Char.code ch - 64
+  | '_' -> 53
+  | ch -> Char.code ch - 70
+
+let rec computeInt tag tagLength acc index = 
+  if (index >= tagLength) then
+    acc
+  else
+    computeInt tag tagLength ((acc lsl 6) lor charToInt tag.[index]) (index + 1)  
+
+let compTag tag = 
+  let tagLength = String.length tag in
+  let subTag = String.sub tag 0 (if tagLength < 5 then tagLength else 5) in
+  computeInt subTag tagLength 0 0
+
 let compile env code =
   let suffix = function
   | "<"  -> "l"
@@ -145,6 +164,8 @@ let compile env code =
              let l, env = env#allocate in
              let env, call = call env ".string" 1 false in
              (env, Mov (M ("$" ^ s), l) :: call)
+	  | SEXP (tag, index) -> let env', code = call env ".sexp" (index + 1) true in
+env', [Push (L (compTag tag))] @ code
              
 	  | LD x ->
              let s, env' = (env#global x)#allocate in
@@ -264,7 +285,13 @@ module S = Set.Make (String)
 module M = Map.Make (String)
 
 (* Environment implementation *)
-let make_assoc l = List.combine l (List.init (List.length l) (fun x -> x))
+let init n f =
+  let rec init' i n f =
+    if i >= n then []
+    else (f i) :: (init' (i + 1) n f)
+  in init' 0 n f
+
+let make_assoc l = List.combine l (init (List.length l) (fun x -> x))
                      
 class env =
   object (self)
@@ -372,4 +399,4 @@ let build prog name =
   close_out outf;
   let inc = try Sys.getenv "RC_RUNTIME" with _ -> "../runtime" in
   Sys.command (Printf.sprintf "gcc -m32 -o %s %s/runtime.o %s.s" name inc name)
- 
+
